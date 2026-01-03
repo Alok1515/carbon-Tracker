@@ -1,0 +1,2049 @@
+(globalThis.TURBOPACK = globalThis.TURBOPACK || []).push([typeof document === "object" ? document.currentScript : undefined, {
+
+"[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx [app-client] (ecmascript)": ((__turbopack_context__) => {
+"use strict";
+
+var { g: global, __dirname, k: __turbopack_refresh__, m: module } = __turbopack_context__;
+{
+/* eslint-disable @typescript-eslint/no-explicit-any */ __turbopack_context__.s({
+    "CHANNEL": (()=>CHANNEL),
+    "default": (()=>HoverReceiver)
+});
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature();
+"use client";
+;
+const CHANNEL = "ORCHIDS_HOVER_v1";
+const VISUAL_EDIT_MODE_KEY = "orchids_visual_edit_mode";
+const FOCUSED_ELEMENT_KEY = "orchids_focused_element";
+// Deduplicate helper for high-frequency traffic (HIT / FOCUS_MOVED / SCROLL)
+// -----------------------------------------------------------------------------
+let _orchidsLastMsg = "";
+const postMessageDedup = (data)=>{
+    try {
+        const key = JSON.stringify(data);
+        if (key === _orchidsLastMsg) return; // identical – drop
+        _orchidsLastMsg = key;
+    } catch  {
+    // if stringify fails, fall through
+    }
+    window.parent.postMessage(data, "*");
+};
+const BOX_PADDING = 4; // Pixels to expand the box on each side
+// Helper to check if element can be made contentEditable
+const isTextEditable = (element)=>{
+    const tagName = element.tagName.toLowerCase();
+    // Elements that typically contain text and can be made contentEditable
+    const editableTags = [
+        "p",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "span",
+        "div",
+        "li",
+        "td",
+        "th",
+        "label",
+        "a",
+        "button"
+    ];
+    // Check if it's already contentEditable or an input/textarea
+    if (element.contentEditable === "true" || tagName === "input" || tagName === "textarea") {
+        return true;
+    }
+    // Allow editing if element contains text and is an editable tag
+    // Only allow editing if element has at most 1 child OR has direct text content
+    if (editableTags.includes(tagName) && element.textContent?.trim()) {
+        // Check if element has direct text nodes (not just text from children)
+        const hasDirectText = Array.from(element.childNodes).some((node)=>node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+        // Allow editing if:
+        // 1. Element has no children (pure text element)
+        // 2. Element has 1 or fewer children AND has direct text content
+        if (element.childElementCount === 0 || element.childElementCount <= 1 && hasDirectText) {
+            return true;
+        }
+    }
+    return false;
+};
+// Helper to extract only text nodes from an element (excluding child element text)
+const extractDirectTextContent = (element)=>{
+    let text = "";
+    for (const node of element.childNodes){
+        if (node.nodeType === Node.TEXT_NODE) {
+            text += node.textContent || "";
+        }
+    }
+    return text;
+};
+// Helper to parse data-orchids-id to extract file path, line, and column
+const parseOrchidsId = (orchidsId)=>{
+    // Format: "filepath:line:column"
+    const parts = orchidsId.split(":");
+    if (parts.length < 3) return null;
+    // The file path might contain colons, so we need to handle that
+    const column = parseInt(parts.pop() || "0");
+    const line = parseInt(parts.pop() || "0");
+    const filePath = parts.join(":"); // Rejoin the remaining parts as the file path
+    if (isNaN(line) || isNaN(column)) return null;
+    return {
+        filePath,
+        line,
+        column
+    };
+};
+// Helper to get current styles of an element (including inline styles)
+const getCurrentStyles = (element)=>{
+    const computed = window.getComputedStyle(element);
+    // Helper to normalize values and provide defaults
+    const normalizeValue = (value, property)=>{
+        // Handle background color - if it's transparent or rgba(0,0,0,0), return "transparent"
+        if (property === "backgroundColor") {
+            if (value === "rgba(0, 0, 0, 0)" || value === "rgb(0, 0, 0, 0)" || value === "transparent" || value === "") {
+                return "transparent";
+            }
+        }
+        // Handle background image - if none, return "none"
+        if (property === "backgroundImage" && (value === "none" || value === "")) {
+            return "none";
+        }
+        // Handle text decoration - if none, return "none"
+        if (property === "textDecoration") {
+            // Some browsers return complex values like "none solid rgb(0, 0, 0)"
+            if (value.includes("none") || value === "") {
+                return "none";
+            }
+        }
+        // Handle font style - if normal, return "normal"
+        if (property === "fontStyle" && (value === "normal" || value === "")) {
+            return "normal";
+        }
+        // Handle font weight - normalize to standard values
+        if (property === "fontWeight") {
+            const weight = parseInt(value);
+            if (!isNaN(weight)) {
+                return String(weight);
+            }
+            return value || "400";
+        }
+        // Handle opacity - if 1, return "1"
+        if (property === "opacity" && (value === "1" || value === "")) {
+            return "1";
+        }
+        // Handle spacing values (padding/margin) - if 0px, return "0"
+        if ((property.includes("padding") || property.includes("margin")) && (value === "0px" || value === "0")) {
+            return "0";
+        }
+        // Handle border radius - if 0px, return "0"
+        if (property === "borderRadius" && (value === "0px" || value === "0")) {
+            return "0";
+        }
+        // Handle letter spacing - if normal, return "normal"
+        if (property === "letterSpacing" && (value === "normal" || value === "0px")) {
+            return "normal";
+        }
+        // Handle gap - if normal, return "normal"
+        if (property === "gap" && (value === "normal" || value === "0px")) {
+            return "normal";
+        }
+        return value;
+    };
+    return {
+        fontSize: normalizeValue(computed.fontSize, "fontSize"),
+        color: normalizeValue(computed.color, "color"),
+        fontWeight: normalizeValue(computed.fontWeight, "fontWeight"),
+        fontStyle: normalizeValue(computed.fontStyle, "fontStyle"),
+        textDecoration: normalizeValue(computed.textDecoration, "textDecoration"),
+        textAlign: normalizeValue(computed.textAlign, "textAlign"),
+        lineHeight: normalizeValue(computed.lineHeight, "lineHeight"),
+        letterSpacing: normalizeValue(computed.letterSpacing, "letterSpacing"),
+        paddingLeft: normalizeValue(computed.paddingLeft, "paddingLeft"),
+        paddingRight: normalizeValue(computed.paddingRight, "paddingRight"),
+        paddingTop: normalizeValue(computed.paddingTop, "paddingTop"),
+        paddingBottom: normalizeValue(computed.paddingBottom, "paddingBottom"),
+        marginLeft: normalizeValue(computed.marginLeft, "marginLeft"),
+        marginRight: normalizeValue(computed.marginRight, "marginRight"),
+        marginTop: normalizeValue(computed.marginTop, "marginTop"),
+        marginBottom: normalizeValue(computed.marginBottom, "marginBottom"),
+        backgroundColor: normalizeValue(computed.backgroundColor, "backgroundColor"),
+        backgroundImage: normalizeValue(computed.backgroundImage, "backgroundImage"),
+        borderRadius: normalizeValue(computed.borderRadius, "borderRadius"),
+        fontFamily: normalizeValue(computed.fontFamily, "fontFamily"),
+        opacity: normalizeValue(computed.opacity, "opacity"),
+        display: normalizeValue(computed.display, "display"),
+        flexDirection: normalizeValue(computed.flexDirection, "flexDirection"),
+        alignItems: normalizeValue(computed.alignItems, "alignItems"),
+        justifyContent: normalizeValue(computed.justifyContent, "justifyContent"),
+        gap: normalizeValue(computed.gap, "gap")
+    };
+};
+// Normalize image src for comparison (handles Next.js optimization wrappers)
+const normalizeImageSrc = (input)=>{
+    if (!input) return "";
+    try {
+        const url = new URL(input, window.location.origin);
+        // Handle Next.js <Image> optimization wrapper
+        if (url.pathname === "/_next/image") {
+            const real = url.searchParams.get("url");
+            if (real) return decodeURIComponent(real);
+        }
+        return url.href; // absolute form
+    } catch  {
+        return input;
+    }
+};
+// Helper to wrap multiline text only when it contains line breaks
+const wrapMultiline = (text)=>{
+    if (text.includes("\n")) {
+        const escaped = text.replace(/\n/g, "\\n");
+        // Wrap in {` ... `} so JSX will interpret it as a template literal
+        return `{\`${escaped}\`}`;
+    }
+    return text;
+};
+function HoverReceiver() {
+    _s();
+    const [hoverBox, setHoverBox] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [hoverBoxes, setHoverBoxes] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])([]);
+    const [focusBox, setFocusBox] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [focusedElementId, setFocusedElementId] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [isVisualEditMode, setIsVisualEditMode] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({
+        "HoverReceiver.useState": ()=>{
+            // Initialize from localStorage if available
+            if ("TURBOPACK compile-time truthy", 1) {
+                const stored = localStorage.getItem(VISUAL_EDIT_MODE_KEY);
+                return stored === "true";
+            }
+            "TURBOPACK unreachable";
+        }
+    }["HoverReceiver.useState"]);
+    const [isResizing, setIsResizing] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [resizeHandle, setResizeHandle] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [resizeStart, setResizeStart] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [isScrolling, setIsScrolling] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    // Tag labels for hover and focus overlays
+    const [hoverTag, setHoverTag] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [focusTag, setFocusTag] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const isResizingRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(false);
+    const lastHitElementRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const lastHitIdRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const focusedElementRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const isVisualEditModeRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(false);
+    const scrollTimeoutRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const originalContentRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])("");
+    const originalSrcRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(""); // track original img src
+    const focusedImageElementRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null); // track the actual img element
+    const editingElementRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const wasEditableRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(false);
+    const styleElementRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const originalStylesRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({});
+    const appliedStylesRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(new Map());
+    const hasStyleChangesRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(false);
+    const lastClickTimeRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(0);
+    const pendingCleanupRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    // Cache of loaded fonts
+    const loadedFontFamilies = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(new Set());
+    // Map of elementId that already has a persistent font set
+    const persistentFontMap = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(new Map());
+    // Timeout refs for clearing persistent font map
+    const persistentFontTimeouts = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(new Map());
+    // Keep ref in sync with state and persist to localStorage
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            isVisualEditModeRef.current = isVisualEditMode;
+            // Persist to localStorage
+            if ("TURBOPACK compile-time truthy", 1) {
+                localStorage.setItem(VISUAL_EDIT_MODE_KEY, String(isVisualEditMode));
+            }
+        }
+    }["HoverReceiver.useEffect"], [
+        isVisualEditMode
+    ]);
+    // On mount, notify parent if visual edit mode was restored from localStorage
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            if (isVisualEditMode) {
+                // Send acknowledgement to parent that visual edit mode is active
+                // This will sync the parent's state with our restored state
+                window.parent.postMessage({
+                    type: CHANNEL,
+                    msg: "VISUAL_EDIT_MODE_ACK",
+                    active: true
+                }, "*");
+                // Also send a special message to indicate this was restored from localStorage
+                window.parent.postMessage({
+                    type: CHANNEL,
+                    msg: "VISUAL_EDIT_MODE_RESTORED",
+                    active: true
+                }, "*");
+                // Restore focused element after a short delay to ensure DOM is ready
+                setTimeout({
+                    "HoverReceiver.useEffect": ()=>{
+                        if ("TURBOPACK compile-time truthy", 1) {
+                            // Restore focused element
+                            const focusedData = localStorage.getItem(FOCUSED_ELEMENT_KEY);
+                            if (focusedData) {
+                                try {
+                                    const { id } = JSON.parse(focusedData);
+                                    const element = document.querySelector(`[data-orchids-id="${id}"]`);
+                                    if (element) {
+                                        // Simulate a click on the element to restore focus
+                                        const rect = element.getBoundingClientRect();
+                                        const clickEvent = new MouseEvent("click", {
+                                            clientX: rect.left + rect.width / 2,
+                                            clientY: rect.top + rect.height / 2,
+                                            bubbles: true,
+                                            cancelable: true
+                                        });
+                                        element.dispatchEvent(clickEvent);
+                                    }
+                                } catch  {
+                                // Ignore parsing errors
+                                }
+                            }
+                        }
+                    }
+                }["HoverReceiver.useEffect"], 500); // Wait 500ms for DOM to be fully ready
+            }
+        }
+    }["HoverReceiver.useEffect"], []); // Run only on mount
+    // Helper function to expand box dimensions
+    const expandBox = (rect)=>({
+            top: rect.top - BOX_PADDING,
+            left: rect.left - BOX_PADDING,
+            width: rect.width + BOX_PADDING * 2,
+            height: rect.height + BOX_PADDING * 2
+        });
+    // Helper to update focus box position
+    const updateFocusBox = ()=>{
+        if (focusedElementRef.current) {
+            const r = focusedElementRef.current.getBoundingClientRect();
+            setFocusBox(expandBox(r));
+        }
+    };
+    // Add global styles for contentEditable elements
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            if (isVisualEditMode && !styleElementRef.current) {
+                const style = document.createElement("style");
+                style.textContent = `
+        [contenteditable="true"]:focus {
+          outline: none !important;
+          box-shadow: none !important;
+          border-color: inherit !important;
+        }
+        [contenteditable="true"] {
+          cursor: text !important;
+        }
+        /* Prevent the default blue highlight on contenteditable */
+        [contenteditable="true"]::selection {
+          background-color: rgba(59, 130, 246, 0.3);
+        }
+        [contenteditable="true"]::-moz-selection {
+          background-color: rgba(59, 130, 246, 0.3);
+        }
+        /* Prevent child elements from being editable */
+        [contenteditable="true"] [contenteditable="false"] {
+          user-select: none !important;
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          opacity: 0.7 !important;
+          cursor: default !important;
+        }
+        /* Ensure protected elements can't be selected */
+        [data-orchids-protected="true"] {
+          user-select: none !important;
+          -webkit-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+        }
+      `;
+                document.head.appendChild(style);
+                styleElementRef.current = style;
+            } else if (!isVisualEditMode && styleElementRef.current) {
+                styleElementRef.current.remove();
+                styleElementRef.current = null;
+            }
+            return ({
+                "HoverReceiver.useEffect": ()=>{
+                    if (styleElementRef.current) {
+                        styleElementRef.current.remove();
+                        styleElementRef.current = null;
+                    }
+                }
+            })["HoverReceiver.useEffect"];
+        }
+    }["HoverReceiver.useEffect"], [
+        isVisualEditMode
+    ]);
+    // Helper to make only text nodes editable and protect child elements
+    const protectChildElements = (element)=>{
+        // Make all child elements non-editable
+        const childElements = element.querySelectorAll("*");
+        childElements.forEach((child)=>{
+            const childEl = child;
+            childEl.contentEditable = "false";
+            // Add a data attribute to mark protected elements
+            childEl.setAttribute("data-orchids-protected", "true");
+            // Only prevent text selection within the child elements when parent is being edited
+            // But still allow pointer events for hovering and clicking
+            childEl.style.userSelect = "none";
+            childEl.style.webkitUserSelect = "none";
+        // Don't set pointerEvents to none - we want to allow hover and click
+        });
+    };
+    // Helper to restore child elements after editing
+    const restoreChildElements = (element)=>{
+        const protectedElements = element.querySelectorAll('[data-orchids-protected="true"]');
+        protectedElements.forEach((child)=>{
+            const childEl = child;
+            childEl.removeAttribute("contenteditable");
+            childEl.removeAttribute("data-orchids-protected");
+            // Restore original styles
+            childEl.style.userSelect = "";
+            childEl.style.webkitUserSelect = "";
+        });
+    };
+    // Handle text changes and send to parent
+    const handleTextChange = (element)=>{
+        // Double-check this is still the editing element to avoid stale closures
+        if (element !== editingElementRef.current) {
+            console.warn("Attempting to handle text change for non-editing element");
+            return;
+        }
+        // Get the orchids ID from the element to ensure we're working with the right one
+        const orchidsId = element.getAttribute("data-orchids-id");
+        if (!orchidsId) return;
+        // For elements with children, only extract direct text content
+        let newText;
+        let oldText;
+        if (element.childElementCount > 0) {
+            // Element has children - only track direct text nodes
+            newText = extractDirectTextContent(element);
+            // We need to compare against the original direct text content
+            // Since originalContentRef stores the full text, we need to handle this differently
+            oldText = originalContentRef.current;
+        } else {
+            // No children - use innerText to preserve line breaks
+            newText = element.innerText || element.textContent || "";
+            oldText = originalContentRef.current;
+        }
+        if (newText !== oldText) {
+            const parsed = parseOrchidsId(orchidsId);
+            if (!parsed) return;
+            // Send text change message to parent
+            const msg = {
+                type: CHANNEL,
+                msg: "TEXT_CHANGED",
+                id: orchidsId,
+                oldText: wrapMultiline(oldText),
+                newText: wrapMultiline(newText),
+                filePath: parsed.filePath,
+                line: parsed.line,
+                column: parsed.column
+            };
+            postMessageDedup(msg);
+            // Update the original content reference
+            originalContentRef.current = newText;
+        }
+    };
+    // Handle style changes and send to parent
+    const handleStyleChange = (element, styles)=>{
+        const orchidsId = element.getAttribute("data-orchids-id");
+        if (!orchidsId) return;
+        const parsed = parseOrchidsId(orchidsId);
+        if (!parsed) return;
+        // Find ALL elements with the same orchids ID
+        const allMatchingElements = document.querySelectorAll(`[data-orchids-id="${orchidsId}"]`);
+        // Apply styles to ALL matching elements for visual feedback
+        allMatchingElements.forEach((el)=>{
+            Object.entries(styles).forEach(([property, value])=>{
+                // Convert camelCase to kebab-case for CSS property names
+                const cssProp = property.replace(/([A-Z])/g, "-$1").toLowerCase();
+                // Handle special cases for default values
+                let finalValue = value;
+                // If backgroundColor is being set to transparent, use transparent keyword
+                if (property === "backgroundColor" && (value === "transparent" || value === "rgba(0, 0, 0, 0)" || value === "rgb(0, 0, 0, 0)")) {
+                    finalValue = "transparent";
+                }
+                // If removing styles (setting to default), remove the property
+                if (property === "backgroundColor" && finalValue === "transparent" || property === "backgroundImage" && value === "none" || property === "textDecoration" && value === "none" || property === "fontStyle" && value === "normal" || property === "opacity" && value === "1" || (property.includes("padding") || property.includes("margin")) && value === "0" || property === "borderRadius" && value === "0" || property === "letterSpacing" && value === "normal" || property === "gap" && value === "normal") {
+                    // Remove the property to let the stylesheet value show through
+                    el.style.removeProperty(cssProp);
+                } else {
+                    // Apply with !important so it overrides existing rules
+                    el.style.setProperty(cssProp, finalValue, "important");
+                }
+            });
+        });
+        // Store the applied styles
+        const existingStyles = appliedStylesRef.current.get(orchidsId) || {};
+        appliedStylesRef.current.set(orchidsId, {
+            ...existingStyles,
+            ...styles
+        });
+        hasStyleChangesRef.current = true;
+        // Update the focus box after style change
+        requestAnimationFrame(()=>{
+            updateFocusBox();
+        });
+    // Don't send to parent yet - wait for blur
+    };
+    // Send style changes on blur
+    const handleStyleBlur = (element)=>{
+        if (!hasStyleChangesRef.current) return;
+        const orchidsId = element.getAttribute("data-orchids-id");
+        if (!orchidsId) return;
+        const parsed = parseOrchidsId(orchidsId);
+        if (!parsed) return;
+        const appliedStyles = appliedStylesRef.current.get(orchidsId);
+        if (!appliedStyles || Object.keys(appliedStyles).length === 0) return;
+        // Get className for breakpoint detection
+        const className = element.getAttribute("class") || "";
+        // Send style blur message to parent for Tailwind conversion
+        const msg = {
+            type: CHANNEL,
+            msg: "STYLE_BLUR",
+            id: orchidsId,
+            styles: appliedStyles,
+            className,
+            filePath: parsed.filePath,
+            line: parsed.line,
+            column: parsed.column
+        };
+        postMessageDedup(msg);
+        // Reset style changes flag
+        hasStyleChangesRef.current = false;
+    };
+    // Flush image src updates on blur/focus change
+    const flushImageSrcChange = ()=>{
+        // Use the stored image element reference if available
+        const imgElement = focusedImageElementRef.current;
+        if (!imgElement) return;
+        const orchidsId = imgElement.getAttribute("data-orchids-id");
+        if (!orchidsId) return;
+        const parsed = parseOrchidsId(orchidsId);
+        if (!parsed) return;
+        const newSrc = normalizeImageSrc(imgElement.src);
+        const oldSrc = normalizeImageSrc(originalSrcRef.current);
+        if (!newSrc || newSrc === oldSrc) return; // nothing changed
+        const msg = {
+            type: CHANNEL,
+            msg: "IMAGE_BLUR",
+            id: orchidsId,
+            oldSrc,
+            newSrc,
+            filePath: parsed.filePath,
+            line: parsed.line,
+            column: parsed.column
+        };
+        postMessageDedup(msg);
+        originalSrcRef.current = newSrc; // reset baseline
+        focusedImageElementRef.current = null; // clear reference
+    };
+    // Listen for style and image updates from parent
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            function handleMessage(e) {
+                if (e.data?.type === "ORCHIDS_STYLE_UPDATE") {
+                    const { elementId, styles } = e.data;
+                    // Find ALL elements with the same orchids ID
+                    const allMatchingElements = document.querySelectorAll(`[data-orchids-id="${elementId}"]`);
+                    if (allMatchingElements.length > 0) {
+                        // If fontFamily is present ensure stylesheet loaded first
+                        const fam = styles.fontFamily || styles["fontFamily"];
+                        if (fam) {
+                            const familyKey = fam.replace(/['\s]+/g, "+");
+                            if (!loadedFontFamilies.current.has(familyKey)) {
+                                const link = document.createElement("link");
+                                link.rel = "stylesheet";
+                                link.href = `https://fonts.googleapis.com/css2?family=${familyKey}:wght@400&display=swap`;
+                                document.head.appendChild(link);
+                                loadedFontFamilies.current.add(familyKey);
+                            }
+                        }
+                        // If fontFamily made persistent via style update, remember so previews don't override
+                        if (fam) {
+                            persistentFontMap.current.set(elementId, fam);
+                            // Clear any existing timeout
+                            const existingTimeout = persistentFontTimeouts.current.get(elementId);
+                            if (existingTimeout) {
+                                clearTimeout(existingTimeout);
+                            }
+                            // Set timeout to clear persistent font after 2 seconds, allowing previews again
+                            const timeoutId = window.setTimeout({
+                                "HoverReceiver.useEffect.handleMessage.timeoutId": ()=>{
+                                    persistentFontMap.current.delete(elementId);
+                                    persistentFontTimeouts.current.delete(elementId);
+                                }
+                            }["HoverReceiver.useEffect.handleMessage.timeoutId"], 2000);
+                            persistentFontTimeouts.current.set(elementId, timeoutId);
+                        }
+                        // Apply styles to ALL matching elements
+                        allMatchingElements.forEach({
+                            "HoverReceiver.useEffect.handleMessage": (element)=>{
+                                // Only update handleStyleChange for the focused element to track changes
+                                if (focusedElementRef.current === element) {
+                                    handleStyleChange(element, styles);
+                                } else {
+                                    // For other elements, apply styles directly
+                                    Object.entries(styles).forEach({
+                                        "HoverReceiver.useEffect.handleMessage": ([property, value])=>{
+                                            const cssProp = property.replace(/([A-Z])/g, "-$1").toLowerCase();
+                                            // Handle special cases for default values
+                                            let finalValue = String(value);
+                                            // If backgroundColor is being set to transparent, use transparent keyword
+                                            if (property === "backgroundColor" && (value === "transparent" || value === "rgba(0, 0, 0, 0)" || value === "rgb(0, 0, 0, 0)")) {
+                                                finalValue = "transparent";
+                                            }
+                                            // If removing styles (setting to default), remove the property
+                                            if (property === "backgroundColor" && finalValue === "transparent" || property === "backgroundImage" && value === "none" || property === "textDecoration" && value === "none" || property === "fontStyle" && value === "normal" || property === "opacity" && value === "1" || (property.includes("padding") || property.includes("margin")) && value === "0" || property === "borderRadius" && value === "0" || property === "letterSpacing" && value === "normal" || property === "gap" && value === "normal") {
+                                                // Remove the property to let the stylesheet value show through
+                                                element.style.removeProperty(cssProp);
+                                            } else {
+                                                element.style.setProperty(cssProp, finalValue, "important");
+                                            }
+                                        }
+                                    }["HoverReceiver.useEffect.handleMessage"]);
+                                }
+                            }
+                        }["HoverReceiver.useEffect.handleMessage"]);
+                    }
+                } else if (e.data?.type === "ORCHIDS_IMAGE_UPDATE") {
+                    const { elementId, src, oldSrc } = e.data;
+                    let element = null;
+                    const candidates = document.querySelectorAll(`[data-orchids-id="${elementId}"]`);
+                    candidates.forEach({
+                        "HoverReceiver.useEffect.handleMessage": (el)=>{
+                            if (el.tagName.toLowerCase() === "img") {
+                                const img = el;
+                                const norm = normalizeImageSrc(img.src);
+                                if (!element) element = img; // first fallback
+                                if (oldSrc && normalizeImageSrc(oldSrc) === norm) {
+                                    element = img;
+                                }
+                            }
+                        }
+                    }["HoverReceiver.useEffect.handleMessage"]);
+                    if (!element) return;
+                    if (element.tagName.toLowerCase() === "img") {
+                        const imgEl = element;
+                        {
+                            /*
+             * Clear any existing responsive sources so the newly uploaded image
+             * always displays.  Some frameworks (e.g. Next.js) add a `srcset`
+             * attribute which can override `src` in certain viewport/device
+             * scenarios, so we strip it out before setting the new source.
+             */ imgEl.removeAttribute("srcset");
+                            imgEl.srcset = "";
+                            imgEl.src = src;
+                            // Update baseline src so flush doesn't treat this as pending change
+                            originalSrcRef.current = normalizeImageSrc(src);
+                            focusedImageElementRef.current = imgEl;
+                            imgEl.onload = ({
+                                "HoverReceiver.useEffect.handleMessage": ()=>updateFocusBox()
+                            })["HoverReceiver.useEffect.handleMessage"];
+                        }
+                    }
+                } else if (e.data?.type === "RESIZE_ELEMENT") {
+                    const { elementId, width, height } = e.data;
+                    const element = document.querySelector(`[data-orchids-id="${elementId}"]`);
+                    if (element && focusedElementRef.current === element) {
+                        // Apply temporary resize styles
+                        element.style.setProperty("width", `${width}px`, "important");
+                        element.style.setProperty("height", `${height}px`, "important");
+                        // Update focus box
+                        updateFocusBox();
+                    }
+                }
+            }
+            window.addEventListener("message", handleMessage);
+            return ({
+                "HoverReceiver.useEffect": ()=>window.removeEventListener("message", handleMessage)
+            })["HoverReceiver.useEffect"];
+        }
+    }["HoverReceiver.useEffect"], []);
+    // Handle resize
+    const handleResizeStart = (e, handle)=>{
+        if (!focusedElementRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = focusedElementRef.current.getBoundingClientRect();
+        // Clear any hover overlay when starting resize
+        setHoverBox(null);
+        lastHitElementRef.current = null;
+        // Disable pointer events on body to prevent hover detection
+        document.body.style.pointerEvents = "none";
+        // Keep resize handles interactive
+        const resizeHandles = document.querySelectorAll(".resize-handle");
+        resizeHandles.forEach((handle)=>{
+            handle.style.pointerEvents = "auto";
+        });
+        setIsResizing(true);
+        isResizingRef.current = true;
+        setResizeHandle(handle);
+        setResizeStart({
+            x: e.clientX,
+            y: e.clientY,
+            width: rect.width,
+            height: rect.height
+        });
+    };
+    // Handle resize move
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            if (!isResizing || !resizeStart || !resizeHandle || !focusedElementRef.current) return;
+            const handleMouseMove = {
+                "HoverReceiver.useEffect.handleMouseMove": (e)=>{
+                    const dx = e.clientX - resizeStart.x;
+                    const dy = e.clientY - resizeStart.y;
+                    let newWidth = resizeStart.width;
+                    let newHeight = resizeStart.height;
+                    // Calculate new dimensions based on handle
+                    if (resizeHandle.includes("e")) newWidth = resizeStart.width + dx;
+                    if (resizeHandle.includes("w")) newWidth = resizeStart.width - dx;
+                    if (resizeHandle.includes("s")) newHeight = resizeStart.height + dy;
+                    if (resizeHandle.includes("n")) newHeight = resizeStart.height - dy;
+                    // Get parent container for constraints
+                    const parent = focusedElementRef.current?.parentElement;
+                    if (parent) {
+                        const parentRect = parent.getBoundingClientRect();
+                        const parentStyles = window.getComputedStyle(parent);
+                        const parentPaddingLeft = parseFloat(parentStyles.paddingLeft) || 0;
+                        const parentPaddingRight = parseFloat(parentStyles.paddingRight) || 0;
+                        const parentPaddingTop = parseFloat(parentStyles.paddingTop) || 0;
+                        const parentPaddingBottom = parseFloat(parentStyles.paddingBottom) || 0;
+                        const maxWidth = parentRect.width - parentPaddingLeft - parentPaddingRight;
+                        const maxHeight = parentRect.height - parentPaddingTop - parentPaddingBottom;
+                        /*
+         * Soft-clamp strategy: we respect the parent’s max size until the
+         * user’s cursor actually travels beyond that limit.  As soon as the
+         * drag distance would produce a dimension larger than the container
+         * can accommodate we stop clamping and let the element follow the
+         * cursor, effectively allowing it to “spill” out of its parent.
+         */ const exceedsWidth = newWidth > maxWidth;
+                        const exceedsHeight = newHeight > maxHeight;
+                        newWidth = Math.max(20, exceedsWidth ? newWidth : Math.min(newWidth, maxWidth));
+                        newHeight = Math.max(20, exceedsHeight ? newHeight : Math.min(newHeight, maxHeight));
+                    } else {
+                        // Fallback to minimum dimensions if no parent
+                        newWidth = Math.max(20, newWidth);
+                        newHeight = Math.max(20, newHeight);
+                    }
+                    // Ensure hover box stays hidden during resize
+                    if (hoverBox) {
+                        setHoverBox(null);
+                    }
+                    // Send resize message to parent
+                    if (focusedElementId) {
+                        window.parent.postMessage({
+                            type: CHANNEL,
+                            msg: "RESIZE_ELEMENT",
+                            elementId: focusedElementId,
+                            width: Math.round(newWidth),
+                            height: Math.round(newHeight)
+                        }, "*");
+                    }
+                }
+            }["HoverReceiver.useEffect.handleMouseMove"];
+            const handleMouseUp = {
+                "HoverReceiver.useEffect.handleMouseUp": ()=>{
+                    if (focusedElementRef.current && focusedElementId) {
+                        const element = focusedElementRef.current;
+                        const computedStyle = window.getComputedStyle(element);
+                        const width = parseFloat(computedStyle.width) || element.offsetWidth;
+                        const height = parseFloat(computedStyle.height) || element.offsetHeight;
+                        // Check if element has max-width/max-height constraints
+                        const maxWidth = computedStyle.maxWidth;
+                        const maxHeight = computedStyle.maxHeight;
+                        const hasMaxWidth = maxWidth && maxWidth !== "none" && maxWidth !== "initial";
+                        const hasMaxHeight = maxHeight && maxHeight !== "none" && maxHeight !== "initial";
+                        // Try to use relative units when possible
+                        const parent = element.parentElement;
+                        let widthValue = `${Math.round(width)}px`;
+                        let heightValue = `${Math.round(height)}px`;
+                        if (parent) {
+                            const parentRect = parent.getBoundingClientRect();
+                            const parentStyles = window.getComputedStyle(parent);
+                            const parentPaddingLeft = parseFloat(parentStyles.paddingLeft) || 0;
+                            const parentPaddingRight = parseFloat(parentStyles.paddingRight) || 0;
+                            const parentPaddingTop = parseFloat(parentStyles.paddingTop) || 0;
+                            const parentPaddingBottom = parseFloat(parentStyles.paddingBottom) || 0;
+                            const parentInnerWidth = parentRect.width - parentPaddingLeft - parentPaddingRight;
+                            const parentInnerHeight = parentRect.height - parentPaddingTop - parentPaddingBottom;
+                            // If the element takes up a significant portion of parent, use percentage
+                            const widthPercent = width / parentInnerWidth * 100;
+                            const heightPercent = height / parentInnerHeight * 100;
+                            // Use percentage if it's a round number or close to common values
+                            if (Math.abs(widthPercent - Math.round(widthPercent)) < 0.1 || [
+                                25,
+                                33.333,
+                                50,
+                                66.667,
+                                75,
+                                100
+                            ].some({
+                                "HoverReceiver.useEffect.handleMouseUp": (v)=>Math.abs(widthPercent - v) < 0.5
+                            }["HoverReceiver.useEffect.handleMouseUp"])) {
+                                widthValue = `${Math.round(widthPercent * 10) / 10}%`;
+                            }
+                            // For height, be more conservative with percentages (often px is preferred)
+                            if (Math.abs(heightPercent - Math.round(heightPercent)) < 0.1 && [
+                                25,
+                                50,
+                                75,
+                                100
+                            ].includes(Math.round(heightPercent))) {
+                                heightValue = `${Math.round(heightPercent)}%`;
+                            }
+                        }
+                        // Build styles object
+                        const styles = {};
+                        // Always set a fixed width and height to break out of responsive classes.
+                        styles.width = widthValue;
+                        styles.height = heightValue;
+                        // If the element had a max-width constraint (e.g. from `max-w-full`),
+                        // we update it to the new width to ensure the resize is not capped.
+                        if (hasMaxWidth) {
+                            styles.maxWidth = widthValue;
+                        }
+                        // Same for height.
+                        if (hasMaxHeight) {
+                            styles.maxHeight = heightValue;
+                        }
+                        // Send final dimensions as style change
+                        const msg = {
+                            type: CHANNEL,
+                            msg: "STYLE_BLUR",
+                            id: focusedElementId,
+                            styles,
+                            filePath: "",
+                            line: 0,
+                            column: 0,
+                            className: element.getAttribute("class") || ""
+                        };
+                        // Extract file info from data-orchids-id
+                        const orchidsId = element.getAttribute("data-orchids-id");
+                        if (orchidsId) {
+                            const parsed = parseOrchidsId(orchidsId);
+                            if (parsed) {
+                                msg.filePath = parsed.filePath;
+                                msg.line = parsed.line;
+                                msg.column = parsed.column;
+                            }
+                        }
+                        window.parent.postMessage(msg, "*");
+                    }
+                    setIsResizing(false);
+                    isResizingRef.current = false;
+                    setResizeHandle(null);
+                    setResizeStart(null);
+                    // Re-enable pointer events
+                    document.body.style.pointerEvents = "";
+                    // Clear the last hit element to force re-detection after resize
+                    lastHitElementRef.current = null;
+                }
+            }["HoverReceiver.useEffect.handleMouseUp"];
+            document.addEventListener("mousemove", handleMouseMove);
+            document.addEventListener("mouseup", handleMouseUp);
+            return ({
+                "HoverReceiver.useEffect": ()=>{
+                    document.removeEventListener("mousemove", handleMouseMove);
+                    document.removeEventListener("mouseup", handleMouseUp);
+                }
+            })["HoverReceiver.useEffect"];
+        }
+    }["HoverReceiver.useEffect"], [
+        isResizing,
+        resizeStart,
+        resizeHandle,
+        focusedElementId,
+        hoverBox
+    ]); // Added focusedElementId and hoverBox as dependencies
+    // Cleanup function to restore element state
+    const cleanupEditingElement = ()=>{
+        if (editingElementRef.current) {
+            const element = editingElementRef.current;
+            // Immediately clear the ref to prevent any further operations
+            editingElementRef.current = null;
+            // Flush pending style edits first for the same reason described above
+            handleStyleBlur(element);
+            // Now process text changes
+            handleTextChange(element);
+            // Restore child elements if they were protected
+            if (element.childElementCount > 0) {
+                restoreChildElements(element);
+            }
+            // Only set contentEditable to false if we made it true
+            if (!wasEditableRef.current) {
+                element.contentEditable = "false";
+            }
+            // Don't restore original styles - keep the applied styles
+            // Remove the outline suppression styles only
+            const currentStyle = element.getAttribute("style") || "";
+            const cleanedStyle = currentStyle.replace(/outline:\s*none\s*!important;?/gi, "").replace(/box-shadow:\s*none\s*!important;?/gi, "").trim().replace(/;\s*;/g, ";").replace(/^;|;$/g, "");
+            if (cleanedStyle) {
+                element.setAttribute("style", cleanedStyle);
+            } else {
+                element.removeAttribute("style");
+            }
+            element.blur();
+            // Remove event handlers
+            const handlers = element._editHandlers;
+            if (handlers) {
+                element.removeEventListener("focus", handlers.focus);
+                element.removeEventListener("blur", handlers.blur);
+                element.removeEventListener("input", handlers.input);
+                delete element._editHandlers;
+            }
+            wasEditableRef.current = false;
+            // Clear the original content reference
+            originalContentRef.current = "";
+        }
+    };
+    // Prevent all navigation in visual edit mode
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            if (!isVisualEditMode) return;
+            // Prevent link clicks
+            const preventLinkClick = {
+                "HoverReceiver.useEffect.preventLinkClick": (e)=>{
+                    const target = e.target;
+                    const link = target.closest("a");
+                    if (link && !link.isContentEditable) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }
+            }["HoverReceiver.useEffect.preventLinkClick"];
+            // Prevent form submissions
+            const preventFormSubmit = {
+                "HoverReceiver.useEffect.preventFormSubmit": (e)=>{
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }["HoverReceiver.useEffect.preventFormSubmit"];
+            // Add listeners in capture phase to catch events early
+            document.addEventListener("click", preventLinkClick, true);
+            document.addEventListener("submit", preventFormSubmit, true);
+            return ({
+                "HoverReceiver.useEffect": ()=>{
+                    document.removeEventListener("click", preventLinkClick, true);
+                    document.removeEventListener("submit", preventFormSubmit, true);
+                }
+            })["HoverReceiver.useEffect"];
+        }
+    }["HoverReceiver.useEffect"], [
+        isVisualEditMode
+    ]);
+    // Clean up when exiting visual edit mode
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            if (!isVisualEditMode) {
+                cleanupEditingElement();
+                // Clear applied styles tracking
+                appliedStylesRef.current.clear();
+                hasStyleChangesRef.current = false;
+                // Clear image element reference
+                focusedImageElementRef.current = null;
+            }
+        }
+    }["HoverReceiver.useEffect"], [
+        isVisualEditMode
+    ]);
+    // Update focus box position when scrolling or resizing
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            if (focusedElementRef.current) {
+                const handleUpdate = {
+                    "HoverReceiver.useEffect.handleUpdate": ()=>{
+                        updateFocusBox();
+                        if (focusedElementRef.current && focusedElementId) {
+                            const fr = focusedElementRef.current.getBoundingClientRect();
+                            const fBox = expandBox(fr);
+                            if ("TURBOPACK compile-time truthy", 1) {
+                                const focMsg = {
+                                    type: CHANNEL,
+                                    msg: "FOCUS_MOVED",
+                                    id: focusedElementId,
+                                    rect: {
+                                        top: fBox.top,
+                                        left: fBox.left,
+                                        width: fBox.width,
+                                        height: fBox.height
+                                    }
+                                };
+                                postMessageDedup(focMsg);
+                            }
+                        }
+                    }
+                }["HoverReceiver.useEffect.handleUpdate"];
+                window.addEventListener("scroll", handleUpdate, true);
+                window.addEventListener("resize", handleUpdate);
+                // Also observe the focused element for size changes
+                const resizeObserver = new ResizeObserver(handleUpdate);
+                resizeObserver.observe(focusedElementRef.current);
+                return ({
+                    "HoverReceiver.useEffect": ()=>{
+                        window.removeEventListener("scroll", handleUpdate, true);
+                        window.removeEventListener("resize", handleUpdate);
+                        resizeObserver.disconnect();
+                    }
+                })["HoverReceiver.useEffect"];
+            }
+        }
+    }["HoverReceiver.useEffect"], [
+        focusedElementId
+    ]);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HoverReceiver.useEffect": ()=>{
+            // Handle pointer movement directly in the iframe
+            function onPointerMove(e) {
+                if (isResizingRef.current) {
+                    return;
+                }
+                // Only track pointer when visual edit mode is active
+                if (!isVisualEditModeRef.current) return;
+                // Don't show hover boxes while scrolling
+                if (isScrolling) return;
+                // Hit-testing at pointer position
+                const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-orchids-id]") ?? null;
+                if (hit !== lastHitElementRef.current) {
+                    lastHitElementRef.current = hit;
+                    if (!hit) {
+                        setHoverBox(null);
+                        setHoverBoxes([]);
+                        setHoverTag(null);
+                        lastHitIdRef.current = null;
+                        // If we were previously focused on an image, ensure its src is flushed
+                        flushImageSrcChange();
+                        const msg = {
+                            type: CHANNEL,
+                            msg: "HIT",
+                            id: null,
+                            tag: null,
+                            rect: null
+                        };
+                        postMessageDedup(msg);
+                        return;
+                    }
+                    // Don't show hover box if this is the focused element
+                    const hitId = hit.getAttribute("data-orchids-id");
+                    // Check if we're already showing boxes for this ID
+                    if (hitId === lastHitIdRef.current) {
+                        return;
+                    }
+                    lastHitIdRef.current = hitId;
+                    const tagName = hit.getAttribute("data-orchids-name") || hit.tagName.toLowerCase();
+                    // Update hover boxes immediately for instant feedback
+                    // Find ALL elements with the same orchids ID
+                    const allMatchingElements = document.querySelectorAll(`[data-orchids-id="${hitId}"]`);
+                    // Create hover boxes for all matching elements except the focused one
+                    const boxes = [];
+                    allMatchingElements.forEach({
+                        "HoverReceiver.useEffect.onPointerMove": (element)=>{
+                            // Skip if this element is the focused one
+                            const elementId = element.getAttribute("data-orchids-id");
+                            if (elementId === focusedElementId) {
+                                return;
+                            }
+                            const rect = element.getBoundingClientRect();
+                            boxes.push(expandBox(rect));
+                        }
+                    }["HoverReceiver.useEffect.onPointerMove"]);
+                    // Set multiple hover boxes
+                    setHoverBoxes(boxes);
+                    // Set single hover box for the primary element (for compatibility)
+                    // Only set if it's not the focused element
+                    if (hitId !== focusedElementId) {
+                        const r = hit.getBoundingClientRect();
+                        const expandedBox = expandBox(r);
+                        setHoverBox(expandedBox);
+                    } else {
+                        setHoverBox(null);
+                    }
+                    setHoverTag(tagName);
+                    const msg = {
+                        type: CHANNEL,
+                        msg: "HIT",
+                        id: hitId,
+                        tag: tagName,
+                        rect: hitId !== focusedElementId ? expandBox(hit.getBoundingClientRect()) : null
+                    };
+                    postMessageDedup(msg);
+                }
+            }
+            // Handle pointer leaving the document
+            function onPointerLeave() {
+                if (!isVisualEditModeRef.current) return;
+                if (isResizingRef.current) return;
+                setHoverBox(null);
+                setHoverBoxes([]);
+                setHoverTag(null);
+                // Flush image src change when cursor leaves iframe altogether
+                flushImageSrcChange();
+                lastHitElementRef.current = null;
+                lastHitIdRef.current = null;
+                const msg = {
+                    type: CHANNEL,
+                    msg: "HIT",
+                    id: null,
+                    tag: null,
+                    rect: null
+                };
+                postMessageDedup(msg);
+            }
+            // Handle mousedown to prepare element for editing
+            function onMouseDownCapture(e) {
+                if (isResizingRef.current) return;
+                // Only handle if visual edit mode is active
+                if (!isVisualEditModeRef.current) return;
+                const hit = e.target?.closest("[data-orchids-id]");
+                if (hit && isTextEditable(hit)) {
+                    // Store whether it was already editable
+                    wasEditableRef.current = hit.contentEditable === "true";
+                    // Make element editable BEFORE the click goes through
+                    if (!wasEditableRef.current) {
+                        // Apply inline styles to remove focus ring
+                        const currentStyle = hit.getAttribute("style") || "";
+                        hit.setAttribute("style", `${currentStyle}; outline: none !important; box-shadow: none !important;`);
+                        hit.contentEditable = "true";
+                        // If the element has children, protect them from being edited
+                        if (hit.childElementCount > 0) {
+                            protectChildElements(hit);
+                        }
+                    }
+                }
+            }
+            // Handle clicks to focus elements
+            function onClickCapture(e) {
+                if (isResizingRef.current) return;
+                // Only handle if visual edit mode is active
+                if (!isVisualEditModeRef.current) return;
+                // Debounce rapid clicks
+                const now = Date.now();
+                if (now - lastClickTimeRef.current < 100) {
+                    return; // Ignore clicks within 100ms of each other
+                }
+                lastClickTimeRef.current = now;
+                const target = e.target;
+                const hit = target.closest("[data-orchids-id]");
+                if (hit) {
+                    const tagName = hit.getAttribute("data-orchids-name") || hit.tagName.toLowerCase();
+                    const hitId = hit.getAttribute("data-orchids-id");
+                    const isEditable = isTextEditable(hit);
+                    // Always prevent default for non-text interactions
+                    const isLink = hit.tagName.toLowerCase() === "a" || !!hit.closest("a");
+                    const isButton = hit.tagName.toLowerCase() === "button" || hit.getAttribute("role") === "button";
+                    // Prevent navigation and button actions
+                    if (isLink || isButton || !isEditable) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                    // Capture previously focused element before updating
+                    const prevFocused = focusedElementRef.current;
+                    // Update focused element
+                    focusedElementRef.current = hit;
+                    setFocusedElementId(hitId);
+                    setFocusTag(tagName);
+                    // Save focused element info to localStorage
+                    if (hitId && "object" !== "undefined") {
+                        const focusedElementData = {
+                            id: hitId,
+                            tag: tagName
+                        };
+                        localStorage.setItem(FOCUSED_ELEMENT_KEY, JSON.stringify(focusedElementData));
+                    }
+                    // Find ALL other elements with the same orchids ID and show hover boxes
+                    const allMatchingElements = document.querySelectorAll(`[data-orchids-id="${hitId}"]`);
+                    // Create hover boxes for all matching elements except the focused one
+                    const boxes = [];
+                    allMatchingElements.forEach({
+                        "HoverReceiver.useEffect.onClickCapture": (element)=>{
+                            // Skip the focused element itself
+                            if (element === hit) {
+                                return;
+                            }
+                            const rect = element.getBoundingClientRect();
+                            boxes.push(expandBox(rect));
+                        }
+                    }["HoverReceiver.useEffect.onClickCapture"]);
+                    // Set hover boxes for other matching elements
+                    setHoverBoxes(boxes);
+                    // Set the hover tag to show on other elements
+                    if (boxes.length > 0) {
+                        setHoverTag(tagName);
+                    }
+                    // Track image element specifically
+                    if (hit.tagName.toLowerCase() === "img") {
+                        focusedImageElementRef.current = hit;
+                    } else {
+                        focusedImageElementRef.current = null;
+                    }
+                    // Store original styles for the focused element
+                    originalStylesRef.current = getCurrentStyles(hit);
+                    // If this is an editable element, set it up
+                    if (isEditable) {
+                        // Cancel any pending cleanup
+                        if (pendingCleanupRef.current) {
+                            clearTimeout(pendingCleanupRef.current);
+                            pendingCleanupRef.current = null;
+                        }
+                        // Clean up any previous editing element first
+                        if (editingElementRef.current && editingElementRef.current !== hit) {
+                            // Force blur on the previous element to trigger handlers
+                            editingElementRef.current.blur();
+                            cleanupEditingElement();
+                        }
+                        // Only set up if this is a new element
+                        if (hit !== editingElementRef.current) {
+                            editingElementRef.current = hit;
+                            // Store original content - for elements with children, only store direct text
+                            if (hit.childElementCount > 0) {
+                                originalContentRef.current = extractDirectTextContent(hit);
+                            } else {
+                                originalContentRef.current = hit.innerText || hit.textContent || "";
+                            }
+                            // Create handlers with current element reference
+                            const createHandlers = {
+                                "HoverReceiver.useEffect.onClickCapture.createHandlers": (element)=>{
+                                    const handleFocus = {
+                                        "HoverReceiver.useEffect.onClickCapture.createHandlers.handleFocus": ()=>{
+                                            // Double-check this is still the editing element
+                                            if (element !== editingElementRef.current) return;
+                                            // If the user applied inline style edits **before** entering text
+                                            // editing mode, make sure we commit them right away so that the
+                                            // subsequent text edits operate on the updated source.
+                                            handleStyleBlur(element);
+                                            // Update original content - for elements with children, only store direct text
+                                            if (element.childElementCount > 0) {
+                                                originalContentRef.current = extractDirectTextContent(element);
+                                            } else {
+                                                originalContentRef.current = element.innerText || element.textContent || "";
+                                            }
+                                            // Style blur above resets the flag – keep it in sync.
+                                            hasStyleChangesRef.current = false;
+                                        }
+                                    }["HoverReceiver.useEffect.onClickCapture.createHandlers.handleFocus"];
+                                    const handleBlur = {
+                                        "HoverReceiver.useEffect.onClickCapture.createHandlers.handleBlur": ()=>{
+                                            // Double-check this is still the editing element
+                                            if (element !== editingElementRef.current) return;
+                                            // Flush style changes *before* text changes so that the style
+                                            // update is committed with the original line/column offsets.
+                                            // A subsequent text update may shift the source code which would
+                                            // otherwise cause the later style edit to fail.
+                                            handleStyleBlur(element);
+                                            handleTextChange(element);
+                                        }
+                                    }["HoverReceiver.useEffect.onClickCapture.createHandlers.handleBlur"];
+                                    const handleInput = {
+                                        "HoverReceiver.useEffect.onClickCapture.createHandlers.handleInput": ()=>{
+                                            // Double-check this is still the editing element
+                                            if (element !== editingElementRef.current) return;
+                                        // Optionally handle real-time updates
+                                        // handleTextChange(element);
+                                        }
+                                    }["HoverReceiver.useEffect.onClickCapture.createHandlers.handleInput"];
+                                    return {
+                                        handleFocus,
+                                        handleBlur,
+                                        handleInput
+                                    };
+                                }
+                            }["HoverReceiver.useEffect.onClickCapture.createHandlers"];
+                            const handlers = createHandlers(hit);
+                            hit.addEventListener("focus", handlers.handleFocus);
+                            hit.addEventListener("blur", handlers.handleBlur);
+                            hit.addEventListener("input", handlers.handleInput);
+                            // Store handlers for cleanup
+                            hit._editHandlers = {
+                                focus: handlers.handleFocus,
+                                blur: handlers.handleBlur,
+                                input: handlers.handleInput
+                            };
+                        }
+                    }
+                    // Update focus box with expanded dimensions
+                    const r = hit.getBoundingClientRect();
+                    const expandedBox = expandBox(r);
+                    setFocusBox(expandedBox);
+                    // Clear hover box since we're focusing
+                    setHoverBox(null);
+                    // Get className for Tailwind extraction
+                    const className = hit.getAttribute("class") || "";
+                    // Get src for images & track original
+                    const srcRaw = hit.tagName.toLowerCase() === "img" ? hit.src : undefined;
+                    if (srcRaw) {
+                        originalSrcRef.current = normalizeImageSrc(srcRaw);
+                    }
+                    // Get current styles immediately
+                    const computedStyles = getCurrentStyles(hit);
+                    // Send click event to parent with coordinates and current styles
+                    const msg = {
+                        type: CHANNEL,
+                        msg: "ELEMENT_CLICKED",
+                        id: hitId,
+                        tag: tagName,
+                        rect: ("TURBOPACK compile-time truthy", 1) ? {
+                            top: expandedBox.top,
+                            left: expandedBox.left,
+                            width: expandedBox.width,
+                            height: expandedBox.height
+                        } : ("TURBOPACK unreachable", undefined),
+                        clickPosition: {
+                            x: e.clientX,
+                            y: e.clientY
+                        },
+                        isEditable,
+                        currentStyles: computedStyles,
+                        className,
+                        src: srcRaw
+                    };
+                    // Send message with all data at once
+                    postMessageDedup(msg);
+                    // Move cleanup operations to after message is sent
+                    setTimeout({
+                        "HoverReceiver.useEffect.onClickCapture": ()=>{
+                            // Before changing focus, flush pending image src change
+                            flushImageSrcChange();
+                            // Flush style changes for the previously focused element (if any)
+                            if (prevFocused && prevFocused !== hit) {
+                                handleStyleBlur(prevFocused);
+                            }
+                            // Clean up any previous editing element (if it's different)
+                            if (editingElementRef.current && editingElementRef.current !== hit) {
+                                cleanupEditingElement();
+                            }
+                        }
+                    }["HoverReceiver.useEffect.onClickCapture"], 0);
+                } else {
+                    // Clicked on empty space or element without data-orchids-id
+                    // Clear focus and hover boxes
+                    if (focusedElementRef.current) {
+                        // Flush any pending changes
+                        flushImageSrcChange();
+                        handleStyleBlur(focusedElementRef.current);
+                        cleanupEditingElement();
+                        // Clear all focus and hover states
+                        focusedElementRef.current = null;
+                        setFocusedElementId(null);
+                        setFocusTag(null);
+                        setFocusBox(null);
+                        setHoverBox(null);
+                        setHoverBoxes([]);
+                        setHoverTag(null);
+                        // Clear focused element from localStorage
+                        if ("TURBOPACK compile-time truthy", 1) {
+                            localStorage.removeItem(FOCUSED_ELEMENT_KEY);
+                        }
+                        // Notify parent that focus was cleared
+                        const msg = {
+                            type: CHANNEL,
+                            msg: "ELEMENT_CLICKED",
+                            id: null,
+                            tag: null,
+                            rect: {
+                                top: 0,
+                                left: 0,
+                                width: 0,
+                                height: 0
+                            },
+                            clickPosition: {
+                                x: e.clientX,
+                                y: e.clientY
+                            },
+                            isEditable: false,
+                            currentStyles: {},
+                            className: ""
+                        };
+                        postMessageDedup(msg);
+                    }
+                }
+            }
+            // Handle messages from parent
+            function onMsg(e) {
+                if (e.data?.type !== CHANNEL) return;
+                // Handle preview font request from parent
+                if (e.data.msg === "PREVIEW_FONT" && "elementId" in e.data) {
+                    const { elementId, fontFamily } = e.data;
+                    // Skip if font already persisted for this element to avoid race condition
+                    if (persistentFontMap.current.has(elementId)) {
+                        return;
+                    }
+                    const element = document.querySelector(`[data-orchids-id="${elementId}"]`);
+                    if (!element) return;
+                    // Ensure font stylesheet is loaded
+                    const familyKey = fontFamily.replace(/\s+/g, "+");
+                    if (!loadedFontFamilies.current.has(familyKey)) {
+                        const link = document.createElement("link");
+                        link.rel = "stylesheet";
+                        link.href = `https://fonts.googleapis.com/css2?family=${familyKey}:wght@400&display=swap`;
+                        document.head.appendChild(link);
+                        loadedFontFamilies.current.add(familyKey);
+                    }
+                    // Apply font family to element inline for preview
+                    element.style.fontFamily = `'${fontFamily}', sans-serif`;
+                    return;
+                }
+                // Handle scroll messages from parent
+                if (e.data.msg === "SCROLL" && "dx" in e.data && "dy" in e.data) {
+                    window.scrollBy(e.data.dx, e.data.dy);
+                }
+                // Handle visual edit mode state changes
+                if (e.data.msg === "VISUAL_EDIT_MODE" && "active" in e.data) {
+                    const newMode = e.data.active;
+                    setIsVisualEditMode(newMode);
+                    // Clear localStorage if visual edit mode is being turned off
+                    if (!newMode && "object" !== "undefined") {
+                        localStorage.removeItem(VISUAL_EDIT_MODE_KEY);
+                        localStorage.removeItem(FOCUSED_ELEMENT_KEY);
+                    }
+                    // Send acknowledgement back to parent so it knows we received the mode change
+                    window.parent.postMessage({
+                        type: CHANNEL,
+                        msg: "VISUAL_EDIT_MODE_ACK",
+                        active: newMode
+                    }, "*");
+                    if (!newMode) {
+                        // already handled, flush too
+                        // Flush image src change for current focus
+                        flushImageSrcChange();
+                        // Clean up any editing element
+                        cleanupEditingElement();
+                        // Clear image element reference
+                        focusedImageElementRef.current = null;
+                        // Clear everything when exiting visual edit mode
+                        setHoverBox(null);
+                        setHoverBoxes([]);
+                        setFocusBox(null);
+                        setFocusedElementId(null);
+                        lastHitElementRef.current = null;
+                        focusedElementRef.current = null;
+                        hasStyleChangesRef.current = false;
+                        setHoverTag(null);
+                        setFocusTag(null);
+                        // Notify parent that we've cleared the selection
+                        const msg = {
+                            type: CHANNEL,
+                            msg: "HIT",
+                            id: null,
+                            tag: null,
+                            rect: null
+                        };
+                        postMessageDedup(msg);
+                    }
+                }
+                // Handle clear inline styles message
+                if (e.data.msg === "CLEAR_INLINE_STYLES" && "elementId" in e.data) {
+                    // Find ALL elements with the same orchids ID
+                    const allMatchingElements = document.querySelectorAll(`[data-orchids-id="${e.data.elementId}"]`);
+                    allMatchingElements.forEach({
+                        "HoverReceiver.useEffect.onMsg": (element)=>{
+                            // Clear only the inline styles we track (typography, spacing, and background)
+                            const stylesToClear = [
+                                "fontSize",
+                                "color",
+                                "fontWeight",
+                                "fontStyle",
+                                "textDecoration",
+                                "textAlign",
+                                "paddingLeft",
+                                "paddingRight",
+                                "paddingTop",
+                                "paddingBottom",
+                                "marginLeft",
+                                "marginRight",
+                                "marginTop",
+                                "marginBottom",
+                                "backgroundColor",
+                                "backgroundImage"
+                            ];
+                            stylesToClear.forEach({
+                                "HoverReceiver.useEffect.onMsg": (prop)=>{
+                                    element.style[prop] = "";
+                                }
+                            }["HoverReceiver.useEffect.onMsg"]);
+                        }
+                    }["HoverReceiver.useEffect.onMsg"]);
+                    // Clear from our tracking
+                    appliedStylesRef.current.delete(e.data.elementId);
+                }
+                // Handle show element hover message
+                if (e.data.msg === "SHOW_ELEMENT_HOVER" && "elementId" in e.data) {
+                    const { elementId } = e.data;
+                    if (!elementId) {
+                        // Clear hover boxes if no element ID
+                        setHoverBoxes([]);
+                        setHoverTag(null);
+                        return;
+                    }
+                    // Find ALL elements with the same orchids ID
+                    const allMatchingElements = document.querySelectorAll(`[data-orchids-id="${elementId}"]`);
+                    if (allMatchingElements.length > 0) {
+                        const boxes = [];
+                        let tagName = "";
+                        allMatchingElements.forEach({
+                            "HoverReceiver.useEffect.onMsg": (element)=>{
+                                // Skip if this element is the focused one
+                                if (element === focusedElementRef.current) {
+                                    return;
+                                }
+                                const rect = element.getBoundingClientRect();
+                                boxes.push(expandBox(rect));
+                                if (!tagName) {
+                                    tagName = element.getAttribute("data-orchids-name") || element.tagName.toLowerCase();
+                                }
+                            }
+                        }["HoverReceiver.useEffect.onMsg"]);
+                        // Set hover boxes for all matching elements
+                        setHoverBoxes(boxes);
+                        setHoverTag(boxes.length > 0 ? tagName : null);
+                    }
+                }
+            }
+            // Handle scroll events to update hover box position
+            function onScroll() {
+                if (isResizingRef.current) return;
+                // Only update hover box if visual edit mode is active
+                if (!isVisualEditModeRef.current) return;
+                // Hide hover boxes while scrolling
+                setIsScrolling(true);
+                setHoverBox(null);
+                setHoverBoxes([]);
+                // Notify parent that scrolling has started
+                const scrollMsg = {
+                    type: CHANNEL,
+                    msg: "SCROLL_STARTED"
+                };
+                postMessageDedup(scrollMsg);
+                // Reset the notification flag after scrolling stops
+                if (scrollTimeoutRef.current) {
+                    clearTimeout(scrollTimeoutRef.current);
+                }
+                scrollTimeoutRef.current = window.setTimeout({
+                    "HoverReceiver.useEffect.onScroll": ()=>{
+                        setIsScrolling(false);
+                        const scrollStopMsg = {
+                            type: CHANNEL,
+                            msg: "SCROLL_STOPPED"
+                        };
+                        postMessageDedup(scrollStopMsg);
+                    }
+                }["HoverReceiver.useEffect.onScroll"], 16); // One frame (16ms) for instant restoration
+            }
+            // Add event listeners
+            document.addEventListener("pointermove", onPointerMove, {
+                passive: true
+            });
+            document.addEventListener("pointerleave", onPointerLeave);
+            document.addEventListener("mousedown", onMouseDownCapture, {
+                capture: true
+            });
+            document.addEventListener("click", onClickCapture, {
+                capture: true
+            });
+            window.addEventListener("message", onMsg);
+            window.addEventListener("scroll", onScroll, true);
+            return ({
+                "HoverReceiver.useEffect": ()=>{
+                    document.removeEventListener("pointermove", onPointerMove);
+                    document.removeEventListener("pointerleave", onPointerLeave);
+                    document.removeEventListener("mousedown", onMouseDownCapture, true);
+                    document.removeEventListener("click", onClickCapture, true);
+                    window.removeEventListener("message", onMsg);
+                    window.removeEventListener("scroll", onScroll, true);
+                    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+                }
+            })["HoverReceiver.useEffect"];
+        }
+    }["HoverReceiver.useEffect"], [
+        focusedElementId,
+        isResizing
+    ]); // Added focusedElementId and isResizing as dependencies
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
+        children: [
+            isVisualEditMode && !isResizing && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
+                children: hoverBoxes.filter((box)=>box !== null).map((box, index)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed pointer-events-none border-[0.5px] border-[#38bdf8] bg-blue-200/20 border-dashed rounded-sm",
+                                style: {
+                                    zIndex: 100000,
+                                    left: box.left,
+                                    top: box.top,
+                                    width: box.width,
+                                    height: box.height
+                                }
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2020,
+                                columnNumber: 17
+                            }, this),
+                            hoverTag && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed pointer-events-none text-[10px] text-white bg-[#38bdf8] px-1 py-0.5 rounded-sm",
+                                style: {
+                                    zIndex: 100001,
+                                    left: box.left,
+                                    top: box.top - 20
+                                },
+                                children: hoverTag
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2032,
+                                columnNumber: 19
+                            }, this)
+                        ]
+                    }, index, true, {
+                        fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                        lineNumber: 2019,
+                        columnNumber: 15
+                    }, this))
+            }, void 0, false),
+            isVisualEditMode && focusBox && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
+                children: [
+                    focusTag && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "fixed text-[10px] font-semibold text-white bg-[#3b82f6] px-1 rounded-sm pointer-events-none select-none",
+                        style: {
+                            zIndex: 100003,
+                            left: focusBox.left - 4,
+                            top: focusBox.top - 16
+                        },
+                        children: focusTag
+                    }, void 0, false, {
+                        fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                        lineNumber: 2052,
+                        columnNumber: 13
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "fixed pointer-events-none border-[1.5px] border-[#38bdf8] rounded-sm",
+                        style: {
+                            zIndex: 100001,
+                            left: focusBox.left,
+                            top: focusBox.top,
+                            width: focusBox.width,
+                            height: focusBox.height
+                        }
+                    }, void 0, false, {
+                        fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                        lineNumber: 2064,
+                        columnNumber: 11
+                    }, this),
+                    !isResizing && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-nw-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left - 4,
+                                    top: focusBox.top - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "nw")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2079,
+                                columnNumber: 15
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-ne-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left + focusBox.width - 4,
+                                    top: focusBox.top - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "ne")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2088,
+                                columnNumber: 15
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-sw-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left - 4,
+                                    top: focusBox.top + focusBox.height - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "sw")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2097,
+                                columnNumber: 15
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-se-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left + focusBox.width - 4,
+                                    top: focusBox.top + focusBox.height - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "se")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2106,
+                                columnNumber: 15
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-n-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left + focusBox.width / 2 - 4,
+                                    top: focusBox.top - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "n")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2117,
+                                columnNumber: 15
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-s-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left + focusBox.width / 2 - 4,
+                                    top: focusBox.top + focusBox.height - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "s")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2126,
+                                columnNumber: 15
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-w-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left - 4,
+                                    top: focusBox.top + focusBox.height / 2 - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "w")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2135,
+                                columnNumber: 15
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "fixed w-2 h-2 bg-[#38bdf8] rounded-full cursor-e-resize pointer-events-auto resize-handle",
+                                style: {
+                                    zIndex: 100002,
+                                    left: focusBox.left + focusBox.width - 4,
+                                    top: focusBox.top + focusBox.height / 2 - 4
+                                },
+                                onMouseDown: (e)=>handleResizeStart(e, "e")
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/visual-edits/VisualEditsMessenger.tsx",
+                                lineNumber: 2144,
+                                columnNumber: 15
+                            }, this)
+                        ]
+                    }, void 0, true)
+                ]
+            }, void 0, true)
+        ]
+    }, void 0, true);
+}
+_s(HoverReceiver, "UovHkOyFl4lLFmZCytY86op0ha8=");
+_c = HoverReceiver;
+var _c;
+__turbopack_context__.k.register(_c, "HoverReceiver");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(module, globalThis.$RefreshHelpers$);
+}
+}}),
+"[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx [app-client] (ecmascript)": ((__turbopack_context__) => {
+"use strict";
+
+var { g: global, __dirname, k: __turbopack_refresh__, m: module } = __turbopack_context__;
+{
+__turbopack_context__.s({
+    "default": (()=>ErrorReporter)
+});
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$build$2f$polyfills$2f$process$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next/dist/build/polyfills/process.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature();
+"use client";
+;
+function ErrorReporter({ error, reset }) {
+    _s();
+    /* ─ instrumentation shared by every route ─ */ const lastOverlayMsg = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])("");
+    const pollRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])();
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ErrorReporter.useEffect": ()=>{
+            const inIframe = window.parent !== window;
+            if (!inIframe) return;
+            const send = {
+                "ErrorReporter.useEffect.send": (payload)=>window.parent.postMessage(payload, "*")
+            }["ErrorReporter.useEffect.send"];
+            const onError = {
+                "ErrorReporter.useEffect.onError": (e)=>send({
+                        type: "ERROR_CAPTURED",
+                        error: {
+                            message: e.message,
+                            stack: e.error?.stack,
+                            filename: e.filename,
+                            lineno: e.lineno,
+                            colno: e.colno,
+                            source: "window.onerror"
+                        },
+                        timestamp: Date.now()
+                    })
+            }["ErrorReporter.useEffect.onError"];
+            const onReject = {
+                "ErrorReporter.useEffect.onReject": (e)=>send({
+                        type: "ERROR_CAPTURED",
+                        error: {
+                            message: e.reason?.message ?? String(e.reason),
+                            stack: e.reason?.stack,
+                            source: "unhandledrejection"
+                        },
+                        timestamp: Date.now()
+                    })
+            }["ErrorReporter.useEffect.onReject"];
+            const pollOverlay = {
+                "ErrorReporter.useEffect.pollOverlay": ()=>{
+                    const overlay = document.querySelector("[data-nextjs-dialog-overlay]");
+                    const node = overlay?.querySelector("h1, h2, .error-message, [data-nextjs-dialog-body]") ?? null;
+                    const txt = node?.textContent ?? node?.innerHTML ?? "";
+                    if (txt && txt !== lastOverlayMsg.current) {
+                        lastOverlayMsg.current = txt;
+                        send({
+                            type: "ERROR_CAPTURED",
+                            error: {
+                                message: txt,
+                                source: "nextjs-dev-overlay"
+                            },
+                            timestamp: Date.now()
+                        });
+                    }
+                }
+            }["ErrorReporter.useEffect.pollOverlay"];
+            window.addEventListener("error", onError);
+            window.addEventListener("unhandledrejection", onReject);
+            pollRef.current = setInterval(pollOverlay, 1000);
+            return ({
+                "ErrorReporter.useEffect": ()=>{
+                    window.removeEventListener("error", onError);
+                    window.removeEventListener("unhandledrejection", onReject);
+                    pollRef.current && clearInterval(pollRef.current);
+                }
+            })["ErrorReporter.useEffect"];
+        }
+    }["ErrorReporter.useEffect"], []);
+    /* ─ extra postMessage when on the global-error route ─ */ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ErrorReporter.useEffect": ()=>{
+            if (!error) return;
+            window.parent.postMessage({
+                type: "global-error-reset",
+                error: {
+                    message: error.message,
+                    stack: error.stack,
+                    digest: error.digest,
+                    name: error.name
+                },
+                timestamp: Date.now(),
+                userAgent: navigator.userAgent
+            }, "*");
+        }
+    }["ErrorReporter.useEffect"], [
+        error
+    ]);
+    /* ─ ordinary pages render nothing ─ */ if (!error) return null;
+    /* ─ global-error UI ─ */ return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("html", {
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("body", {
+            className: "min-h-screen bg-background text-foreground flex items-center justify-center p-4",
+            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "max-w-md w-full text-center space-y-6",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "space-y-2",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
+                                className: "text-2xl font-bold text-destructive",
+                                children: "Something went wrong!"
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                                lineNumber: 103,
+                                columnNumber: 13
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-muted-foreground",
+                                children: "An unexpected error occurred. Please try again fixing with Orchids"
+                            }, void 0, false, {
+                                fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                                lineNumber: 106,
+                                columnNumber: 13
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                        lineNumber: 102,
+                        columnNumber: 11
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "space-y-2",
+                        children: ("TURBOPACK compile-time value", "development") === "development" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("details", {
+                            className: "mt-4 text-left",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("summary", {
+                                    className: "cursor-pointer text-sm text-muted-foreground hover:text-foreground",
+                                    children: "Error details"
+                                }, void 0, false, {
+                                    fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                                    lineNumber: 113,
+                                    columnNumber: 17
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("pre", {
+                                    className: "mt-2 text-xs bg-muted p-2 rounded overflow-auto",
+                                    children: [
+                                        error.message,
+                                        error.stack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "mt-2 text-muted-foreground",
+                                            children: error.stack
+                                        }, void 0, false, {
+                                            fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                                            lineNumber: 119,
+                                            columnNumber: 21
+                                        }, this),
+                                        error.digest && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "mt-2 text-muted-foreground",
+                                            children: [
+                                                "Digest: ",
+                                                error.digest
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                                            lineNumber: 124,
+                                            columnNumber: 21
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                                    lineNumber: 116,
+                                    columnNumber: 17
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                            lineNumber: 112,
+                            columnNumber: 15
+                        }, this)
+                    }, void 0, false, {
+                        fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                        lineNumber: 110,
+                        columnNumber: 11
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+                lineNumber: 101,
+                columnNumber: 9
+            }, this)
+        }, void 0, false, {
+            fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+            lineNumber: 100,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/orchids-projects/carbon Track/src/components/ErrorReporter.tsx",
+        lineNumber: 99,
+        columnNumber: 5
+    }, this);
+}
+_s(ErrorReporter, "di0lBv7IERZfX0QO5gVW3YWNTLI=");
+_c = ErrorReporter;
+var _c;
+__turbopack_context__.k.register(_c, "ErrorReporter");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(module, globalThis.$RefreshHelpers$);
+}
+}}),
+"[project]/orchids-projects/carbon Track/src/components/ThemeProvider.tsx [app-client] (ecmascript)": ((__turbopack_context__) => {
+"use strict";
+
+var { g: global, __dirname, k: __turbopack_refresh__, m: module } = __turbopack_context__;
+{
+__turbopack_context__.s({
+    "ThemeProvider": (()=>ThemeProvider)
+});
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2d$themes$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next-themes/dist/index.mjs [app-client] (ecmascript)");
+"use client";
+;
+;
+function ThemeProvider({ children }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2d$themes$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["ThemeProvider"], {
+        attribute: "class",
+        defaultTheme: "system",
+        enableSystem: true,
+        children: children
+    }, void 0, false, {
+        fileName: "[project]/orchids-projects/carbon Track/src/components/ThemeProvider.tsx",
+        lineNumber: 7,
+        columnNumber: 5
+    }, this);
+}
+_c = ThemeProvider;
+var _c;
+__turbopack_context__.k.register(_c, "ThemeProvider");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(module, globalThis.$RefreshHelpers$);
+}
+}}),
+"[project]/orchids-projects/carbon Track/src/components/ui/sonner.tsx [app-client] (ecmascript)": ((__turbopack_context__) => {
+"use strict";
+
+var { g: global, __dirname, k: __turbopack_refresh__, m: module } = __turbopack_context__;
+{
+__turbopack_context__.s({
+    "Toaster": (()=>Toaster)
+});
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2d$themes$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/next-themes/dist/index.mjs [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$sonner$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/orchids-projects/carbon Track/node_modules/sonner/dist/index.mjs [app-client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature();
+"use client";
+;
+;
+const Toaster = ({ ...props })=>{
+    _s();
+    const { theme = "system" } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2d$themes$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useTheme"])();
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$sonner$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Toaster"], {
+        theme: theme,
+        className: "toaster group",
+        style: {
+            "--normal-bg": "var(--popover)",
+            "--normal-text": "var(--popover-foreground)",
+            "--normal-border": "var(--border)"
+        },
+        ...props
+    }, void 0, false, {
+        fileName: "[project]/orchids-projects/carbon Track/src/components/ui/sonner.tsx",
+        lineNumber: 10,
+        columnNumber: 5
+    }, this);
+};
+_s(Toaster, "EriOrahfenYKDCErPq+L6926Dw4=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$orchids$2d$projects$2f$carbon__Track$2f$node_modules$2f$next$2d$themes$2f$dist$2f$index$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useTheme"]
+    ];
+});
+_c = Toaster;
+;
+var _c;
+__turbopack_context__.k.register(_c, "Toaster");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(module, globalThis.$RefreshHelpers$);
+}
+}}),
+}]);
+
+//# sourceMappingURL=orchids-projects_carbon%20Track_src_b2d528ab._.js.map

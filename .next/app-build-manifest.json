@@ -1,0 +1,24 @@
+{
+  "pages": {
+    "/page": [
+      "static/chunks/orchids-projects_carbon Track_src_app_globals_61655dbc.css",
+      "static/chunks/orchids-projects_carbon Track_src_b2d528ab._.js",
+      "static/chunks/8aae8_cee777eb._.js",
+      "static/chunks/orchids-projects_carbon Track_src_app_layout_tsx_513991d1._.js",
+      "static/chunks/orchids-projects_carbon Track_src_app_global-error_tsx_b60bfac4._.js",
+      "static/chunks/orchids-projects_carbon Track_src_app_global-error_tsx_2be74134._.js",
+      "static/chunks/orchids-projects_carbon Track_src_ab973dd8._.js",
+      "static/chunks/8aae8_gsap_17971191._.js",
+      "static/chunks/8aae8_tailwind-merge_dist_bundle-mjs_mjs_668890ac._.js",
+      "static/chunks/8aae8_4b299a7b._.js",
+      "static/chunks/orchids-projects_carbon Track_src_app_page_tsx_2be74134._.js",
+      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_3827cf0b._.js",
+      "static/chunks/8aae8_next_dist_compiled_87c09c47._.js",
+      "static/chunks/8aae8_next_dist_client_be8ad679._.js",
+      "static/chunks/8aae8_next_dist_0248b3eb._.js",
+      "static/chunks/8aae8_@swc_helpers_cjs_2f721e9d._.js",
+      "static/chunks/orchids-projects_carbon Track_e69f0d32._.js",
+      "static/chunks/orchids-projects_carbon Track_f9f652af._.js"
+    ]
+  }
+}

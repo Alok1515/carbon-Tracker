@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 7, "column": 0}, "map": {"version":3,"sources":["file:///Users/alokkumar/orchids-projects/carbon%20Track/src/app/global-error.tsx"],"sourcesContent":["\"use client\";\n\nimport ErrorReporter from \"@/components/ErrorReporter\";\n\nexport default ErrorReporter;\n"],"names":[],"mappings":";;;AAEA;AAFA;;uCAIe,2KAAA,CAAA,UAAa","debugId":null}}]
+}
