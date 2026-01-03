@@ -31,10 +31,6 @@ Table of Contents
 
 ---
 
-Demo / Screenshots
-- (Add links/screenshots here or a short demo GIF to showcase the dashboard, globe, charts and chat.)
-
----
 
 Features
 
