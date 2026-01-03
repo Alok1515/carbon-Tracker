@@ -1,204 +1,306 @@
 # CarbonTrack
 
-🌍 CarbonTrack is an intelligent, high-performance platform designed to help individuals and organizations measure and reduce their environmental impact through a mix of advanced AI and engaging gamification.
+A modern, high-performance web platform for logging, tracking, and reducing carbon emissions — built with Next.js 15 (App Router), TypeScript and Bun. CarbonTrack combines realtime analytics, AI-driven insights, computer vision, gamification and social features to help individuals, organizations, and cities measure and reduce their environmental impact.
 
-Built with Next.js 15 (App Router), CarbonTrack provides real-time emission monitoring, personalized AI-powered tips, image-based CO2 estimation, and gamified experiences to keep users motivated.
+- Real-time carbon monitoring across Transportation, Energy, Food, and Waste
+- Interactive visualizations and global leaderboards
+- AI summaries, chatbot and image-based emission estimation
+- Gamified quests, rewards and achievement system
+- Hybrid database architecture for scale and edge performance
 
 ---
 
-## Table of Contents
-
-- [Key Features](#key-features)
+Table of Contents
 - [Demo / Screenshots](#demo--screenshots)
+- [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Architecture Overview](#architecture-overview)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
   - [Environment Variables](#environment-variables)
-  - [Install & Run Locally](#install--run-locally)
-- [Development](#development)
-- [Production & Deployment](#production--deployment)
-- [Architecture Overview](#architecture-overview)
+  - [Local Development](#local-development)
+- [Database & Services Setup](#database--services-setup)
+- [Deployment](#deployment)
+- [Environment & Performance Notes](#environment--performance-notes)
+- [Testing & Linting](#testing--linting)
 - [Contributing](#contributing)
-- [Roadmap](#roadmap)
-- [License](#license)
-- [Acknowledgements](#acknowledgements)
+- [Security](#security)
+- [License & Acknowledgements](#license--acknowledgements)
 - [Contact](#contact)
 
 ---
 
-## Key Features
-
-- 🤖 AI-Driven Analysis  
-  - Automatic emission estimation from receipts and images (image-based CO2 estimation).
-  - Personalized reduction tips powered by Google Gemini and additional AI services.
-- 🎮 Gamified Sustainability  
-  - Daily quests, achievements, points and global leaderboards to drive engagement.
-- 📊 Visual Analytics  
-  - Real-time carbon tracking across transportation, energy, and food with interactive charts and "tree-equivalent" metrics.
-- 🛍️ Rewards Marketplace  
-  - Gamified shop to spend points on profile customization, digital badges and other incentives.
-- 🏢 Scalable Tracking  
-  - Support for individual, company, and city-level footprint monitoring.
-- 🔐 Auth & Security  
-  - Secure authentication flows (Better Auth) and role-based features for organizations.
+Demo / Screenshots
+- (Add links/screenshots here or a short demo GIF to showcase the dashboard, globe, charts and chat.)
 
 ---
 
-## Demo / Screenshots
+Features
 
-(Replace with actual screenshots or a demo link.)
+Core Tracking & Analytics
+- Log emissions for Transportation, Energy, Food and Waste
+- Recharts-powered interactive graphs and historical comparisons
+- "Tree-equivalent" conversion for intuitive impact visualization
+- Dashboards for individual users, companies and cities
 
-- Dashboard with real-time carbon meters
-- Quest and leaderboard screens
-- Receipt / image upload and AI estimation workflows
-- Rewards marketplace and profile customization
+AI Features
+- Google Gemini for natural language summaries & chatbot
+- Hugging Face image models to estimate emissions from receipts/items
+- OpenRouter as a secondary LLM access layer
+- Object detection to flag carbon-heavy activities from images
+
+Gamification & Rewards
+- Daily rotating quests and Quest Points (QP)
+- Badge/achievement tiers and a rewards shop
+- Global leaderboards and social feed
+
+Infrastructure & UX
+- Next.js 15 (App Router) with Turbopack
+- Bun runtime & package manager
+- Tailwind CSS 4 + Shadcn (Radix) components
+- GSAP / Framer Motion / react-three-fiber for animations & 3D globe
+- Better Auth (Google OAuth + credentials) for secure auth
+- MongoDB (Mongoose) + Turso (LibSQL) hybrid DB approach
+- Stripe integration available for subscriptions/shop
 
 ---
 
-## Tech Stack
+Tech Stack
 
 - Framework: Next.js 15 (App Router)
-- Styling & Animations: Tailwind CSS 4, GSAP, Framer Motion, Three.js
-- AI: Google Gemini API, Hugging Face
-- Database: MongoDB with Mongoose
-- Auth: Better Auth
-- UI: Radix UI & Recharts
-- Language composition: JavaScript (primary), TypeScript (selected modules), CSS
+- Language: TypeScript
+- Runtime / Package Manager: Bun
+- Styling: Tailwind CSS 4
+- Components: Radix via Shadcn UI
+- Charts: Recharts
+- 3D: Three.js via React Three Fiber
+- Animations: GSAP, Framer Motion
+- Icons: Lucide React
+- Auth: Better Auth (Google OAuth + credentials)
+- Primary DB: MongoDB (Mongoose)
+- Edge DB: Turso (LibSQL)
+- AI: Google Gemini, Hugging Face, OpenRouter
+- Payments: Stripe
+- Validation: Zod
+- Forms: React Hook Form
+- Notifications: Sonner
 
 ---
 
-## Getting Started
+Architecture Overview
 
-### Prerequisites
+- Frontend (Next.js App Router): UI, routing, server & edge actions, API routes and renders.
+- API / Server Logic: Server components + API routes for integrations, auth, and data processing.
+- Databases:
+  - MongoDB (Mongoose) — canonical user records, logs, long-term historical data.
+  - Turso (LibSQL) — edge-optimized datasets and high-performance reads.
+- AI Layer: Requests to Google Gemini (primary) and OpenRouter (fallback) for natural language; Hugging Face for image-based models.
+- Payments: Stripe webhooks & client integrations for subscriptions/shop purchases.
 
-- Node.js (>= 18 recommended)
-- pnpm, npm, or yarn
-- MongoDB (Atlas or self-hosted)
-- API keys for Google Gemini / HuggingFace (if using AI features)
+---
 
-### Environment Variables
+Getting Started
 
-Create a `.env.local` file in the project root and add the variables your app requires. Example names and purposes:
+Prerequisites
+- Bun (recommended) — https://bun.sh/
+- Node 20+ (optional, if you prefer node/npm/yarn for certain tasks)
+- A MongoDB instance (MongoDB Atlas recommended for quick setup)
+- Turso account for edge DB
+- API keys for Google Gemini, Hugging Face, OpenRouter and Stripe
+- Better Auth configuration (or replace with NextAuth/your auth provider)
+- Git
 
-- MONGODB_URI - MongoDB connection string
-- NEXT_PUBLIC_APP_URL - Public URL for the app (e.g., https://your-app.vercel.app)
-- GOOGLE_GEMINI_API_KEY - API key/credential for Google Gemini integration
-- HUGGINGFACE_API_KEY - API key for Hugging Face endpoints
-- NEXT_PUBLIC_MAPS_API_KEY - (optional) Maps / location features
-- NEXTAUTH_URL - URL used by auth provider (if relevant)
-- JWT_SECRET - Secret used for session/JWT signing (if applicable)
-- NEXT_PUBLIC_ENV - e.g., development | production
+Installation
 
-Note: Replace variable names above with the exact keys your code expects. If you're unsure, search the repository for `process.env.` usages.
-
-### Install & Run Locally
-
-Using pnpm (recommended):
-
+1. Clone the repo
 ```bash
-git clone https://github.com/Alok1515/carbon-Tracker.git
-cd carbon-Tracker
-pnpm install
-cp .env.example .env.local     # if there's an example env file
-# set required environment variables in .env.local
-pnpm dev
+git clone https://github.com/Alok1515/carbon-Track.git
+cd carbon-Track
 ```
 
-Using npm:
-
+2. Install dependencies (Bun)
 ```bash
-npm install
-npm run dev
+bun install
 ```
 
-Common npm scripts (examples — check your package.json):
+If you prefer npm/yarn (not recommended given Bun first-class support), adjust accordingly.
 
-- dev — Run the development server (Next.js)
-- build — Build for production
-- start — Start the production server
-- lint — Run linters
-- test — Run tests
+Environment Variables
+
+Create a `.env.local` at the project root. Example vars (update names to match your implementation):
+
+```
+# MongoDB (Mongoose)
+MONGODB_URI=mongodb+srv://<user>:<pass>@cluster0.mongodb.net/carbontrack?retryWrites=true&w=majority
+
+# Turso (Edge DB)
+TURSO_DB_URL=<turso_db_url>
+TURSO_API_KEY=<turso_api_key>
+
+# Better Auth / OAuth
+BETTER_AUTH_CLIENT_ID=<client_id>
+BETTER_AUTH_CLIENT_SECRET=<client_secret>
+NEXTAUTH_URL=http://localhost:3000
+
+# AI & Models
+GOOGLE_GEMINI_API_KEY=<google_gemini_key>
+HUGGINGFACE_API_KEY=<huggingface_key>
+OPENROUTER_API_KEY=<openrouter_key>
+
+# Stripe
+STRIPE_SECRET_KEY=<stripe_secret>
+STRIPE_WEBHOOK_SECRET=<stripe_webhook_secret>
+
+# App
+NEXT_PUBLIC_MAPBOX_KEY=<mapbox_key_if_used>
+NEXT_PUBLIC_ENVIRONMENT=development
+```
+
+Make sure to keep `.env.local` out of version control.
+
+Local Development
+
+Run the development server:
+
+```bash
+# start dev server
+bun run dev
+
+# or if package.json has a different script:
+bun run start:dev
+```
+
+Typical scripts you may expect in package.json:
+```json
+{
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write ."
+  }
+}
+```
+
+Open http://localhost:3000
 
 ---
 
-## Development
+Database & Services Setup
 
-- Branching: Use feature branches named like `feat/<short-description>` or `fix/<short-description>`.
-- Pull Requests: Open PRs against `main` (or the repo's default branch) with a description of changes and testing notes.
-- Tests & Lint: Add and run unit/integration tests for new features; keep linters green.
+MongoDB
+- Use MongoDB Atlas for an easy managed database.
+- Whitelist your dev IP or use SRV connection string.
 
-Tips:
-- Use storybook or a component sandbox for UI components when available.
-- Keep AI calls abstracted behind service modules for easier testing and mocking.
+Turso
+- Create a Turso database and set the URL / key in your environment.
+- Use for edge read patterns and datasets that require low-latency access.
 
----
+AI Providers
+- Google Gemini: configure API and quota on the Google Cloud console.
+- Hugging Face: create an API token and enable the required models.
+- OpenRouter: API key for fallback options.
 
-## Production & Deployment
+Stripe
+- Create a Stripe account, obtain keys and configure webhooks for production.
 
-Recommended deployment: Vercel (first-class support for Next.js). Other options: Netlify, Render, Docker on cloud providers.
-
-Steps for Vercel:
-1. Connect the repository to Vercel.
-2. Set environment variables in the Vercel dashboard (matching your .env keys).
-3. Configure build command (default: `pnpm build` or `npm run build`) and output dir as required by Next.js.
-4. Deploy.
-
-Scaling notes:
-- Use MongoDB Atlas for managed scaling and backups.
-- Offload heavy AI/image processing jobs to background workers or serverless functions to keep the web tier responsive.
-- Cache frequent queries and computed metrics where possible.
+Auth
+- Configure Better Auth (or your auth provider) credentials and redirect URLs (http://localhost:3000/api/auth/callback).
 
 ---
 
-## Architecture Overview
+Deployment
 
-- Next.js App Router handles server components and client components where appropriate.
-- API routes (or server handlers) integrate with:
-  - MongoDB via Mongoose for data persistence
-  - AI services (Google Gemini / Hugging Face) for inference and analysis
-  - Image upload and processing pipeline (thumbnailing, estimation)
-- Gamification layer: points, quests, achievements, and marketplace backed by transactional updates in the DB.
-- Realtime leaderboard updates may use a combination of caching (Redis) and periodic aggregation jobs.
+Recommended hosts
+- Vercel — best-first class support for Next.js
+- Cloudflare Pages / Cloudflare Workers — for edge-first deployments
+- Fly / Render — for Bun-first or custom runtime requirements
 
----
-
-## Roadmap
-
-Planned/possible next steps:
-- Multi-tenant support and advanced org-level reporting
-- Offline/edge inference to reduce API costs
-- More AI models and explainability features
-- Deeper integrations with carbon offset providers and verified projects
+Guidelines
+- Build with Turbopack where available (next build / turbopack flags).
+- Add environment variables securely in your deployment provider.
+- Configure webhook endpoints (Stripe) and secrets using provider's dashboard.
+- For MongoDB, prefer a managed provider (Atlas) and ensure network access.
 
 ---
 
-## Contributing
+Environment & Performance Notes
 
-Contributions are welcome! Please:
+- Bun provides improved install and runtime performance; ensure compatibility for any native node modules.
+- Use Turso for edge-optimized datasets to minimize latency for global users.
+- Cache AI responses where feasible to avoid repeated costs and latency.
+- Use server components for heavy data-fetching pages and client components only where interactivity is needed.
 
+---
+
+Testing & Linting
+
+- Linting: ESLint + TypeScript — run `bun run lint`
+- Formatting: Prettier — run `bun run format`
+- Tests: (Add test framework instructions here if implemented, e.g., Vitest/Playwright/Jest)
+
+---
+
+Contributing
+
+We welcome contributions. To contribute:
 1. Fork the repository
-2. Create a feature branch
-3. Run tests and linters locally
-4. Open a PR with a clear description, screenshots and any migration steps
+2. Create a feature branch: `git checkout -b feat/your-feature`
+3. Install dependencies and run pre-commit checks
+4. Run tests/lint/format
+5. Open a pull request describing changes and rationale
 
-Please follow the repository's code style and commit message conventions.
-
----
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
+Please follow the existing code style and run linters before submitting PRs.
 
 ---
 
-## Acknowledgements
+Security
 
-Thanks to the open-source projects and tools used in this project, including Next.js, Tailwind CSS, GSAP, Framer Motion, Three.js, Radix UI, Recharts, Mongoose, Google Gemini, Hugging Face, and the MongoDB community.
+- Do not commit secrets or API keys.
+- Use environment variables and secret managers in deployments.
+- Report security issues by opening an issue with sensitive details omitted; include contact instructions if required.
 
 ---
 
-## Contact
+License & Acknowledgements
 
-Project owner: Alok (GitHub: @Alok1515)
+- License: (Add your chosen license here, e.g., MIT)
+- Acknowledgements:
+  - Next.js, Bun, Turbopack
+  - Google Gemini, Hugging Face, OpenRouter
+  - Tailwind, Shadcn UI & Radix, Recharts, Three.js
+  - Inspired by community contributors and open-source projects
 
-For questions, feature requests, or security issues, please open an issue on the repository.
+---
+
+Contact
+
+- Repository: https://github.com/Alok1515/carbon-Track
+- Maintainer: Alok (GitHub: @Alok1515)
+- For questions or help, open an issue or join the discussion in the repo.
+
+---
+
+Appendix — Helpful Commands
+
+```
+# Install
+bun install
+
+# Dev
+bun run dev
+
+# Build
+bun run build
+
+# Start (production)
+bun run start
+
+# Lint & format
+bun run lint
+bun run format
+```
+
+- Update environment variable names to match actual implementation files/config in this repo.
