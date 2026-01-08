@@ -44,7 +44,7 @@ AI Features
 - Google Gemini for natural language summaries & chatbot
 - Hugging Face image models to estimate emissions from receipts/items
 - OpenRouter as a secondary LLM access layer
-- Object detection to flag carbon-heavy activities from images
+- Object detection to flag carbon-heavy activities from images.
 
 Gamification & Rewards
 - Daily rotating quests and Quest Points (QP)
