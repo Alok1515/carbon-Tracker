@@ -1,7 +1,7 @@
-import { connectToDatabase } from './mongodb'
+import { connectToDatabase } from './mongodb';
 
 export async function connectDB() {
-  return connectToDatabase()
+  return connectToDatabase();
 }
 
-export default connectDB
+export default connectDB;
