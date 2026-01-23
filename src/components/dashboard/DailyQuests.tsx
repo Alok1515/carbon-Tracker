@@ -10,7 +10,7 @@ import { toast } from "sonner"
 
 interface Quest {
   questId: string
-  title: string
+  title: string 
   description: string
   category: string
   points: number
