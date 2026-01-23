@@ -19,7 +19,7 @@ interface Quest {
   action: string
   progress: number
   completed: boolean
-  completedAt?: string
+  completedAt?: string 
   pointsEarned: number
 }
 
