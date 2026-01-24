@@ -9,7 +9,7 @@ export function useQuestProgress(userId: string | undefined) {
       try {
         // Get all active quests for this action
         const questsResponse = await fetch('/api/daily-quests');
-        if (!questsResponse.ok) return;
+        if (!questsResponse.ok) return; 
         
         const allQuests = await questsResponse.json();
         const relevantQuests = allQuests.filter((q: any) => q.action === action && q.isActive);
